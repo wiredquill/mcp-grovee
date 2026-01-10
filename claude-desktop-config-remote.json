@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "govee": {
+      "command": "ssh",
+      "args": [
+        "user@remote-host-ip",
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "--env-file",
+        "/path/to/.env/on/remote/machine",
+        "mcp-govee:latest"
+      ]
+    }
+  }
+}

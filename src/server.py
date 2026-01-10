@@ -277,5 +277,24 @@ async def set_preset_color(color_name: str) -> str:
 
 
 if __name__ == "__main__":
-    # Run the MCP server
-    mcp.run()
+    import sys
+
+    # Determine transport mode from environment or command line
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+
+    # Check for command line argument
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ["--sse", "--http"]:
+            transport = "sse"
+        elif sys.argv[1] == "--stdio":
+            transport = "stdio"
+
+    # Run the MCP server with appropriate transport
+    if transport == "sse":
+        host = os.getenv("MCP_HOST", "0.0.0.0")
+        port = int(os.getenv("MCP_PORT", "8080"))
+        print(f"Starting MCP server with SSE transport on {host}:{port}", file=sys.stderr)
+        mcp.run(transport="sse", host=host, port=port)
+    else:
+        print("Starting MCP server with stdio transport", file=sys.stderr)
+        mcp.run()

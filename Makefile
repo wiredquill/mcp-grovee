@@ -1,11 +1,13 @@
-.PHONY: help install build run test clean docker-build docker-run k8s-deploy k8s-delete
+.PHONY: help install build run run-http test clean docker-build docker-build-http docker-run docker-run-http k8s-deploy k8s-deploy-http k8s-delete
 
 # Variables
 PYTHON := python3
 VENV := venv
 DOCKER_IMAGE := mcp-govee
+DOCKER_IMAGE_HTTP := mcp-govee-http
 DOCKER_TAG := latest
 K8S_NAMESPACE := mcp-govee
+HTTP_PORT := 8080
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -26,8 +28,11 @@ env: ## Create .env file from example
 		echo ".env file already exists."; \
 	fi
 
-run: ## Run the MCP server locally
+run: ## Run the MCP server locally (stdio mode)
 	$(VENV)/bin/python -m src.server
+
+run-http: ## Run the MCP server locally (HTTP/SSE mode)
+	MCP_TRANSPORT=sse MCP_HOST=127.0.0.1 MCP_PORT=$(HTTP_PORT) $(VENV)/bin/python -m src.server --sse
 
 test: ## Run tests (placeholder)
 	@echo "No tests defined yet"
@@ -38,24 +43,56 @@ clean: ## Clean up build artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-docker-build: ## Build Docker image
+docker-build: ## Build Docker image (stdio mode)
 	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 
-docker-run: ## Run Docker container interactively
+docker-build-http: ## Build Docker image (HTTP/SSE mode)
+	docker build -f Dockerfile.http -t $(DOCKER_IMAGE_HTTP):$(DOCKER_TAG) .
+
+docker-run: ## Run Docker container interactively (stdio mode)
 	docker run -i --rm --env-file .env $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+docker-run-http: ## Run Docker container in HTTP/SSE mode
+	docker run -d --name mcp-govee-http -p $(HTTP_PORT):8080 --env-file .env --restart unless-stopped $(DOCKER_IMAGE_HTTP):$(DOCKER_TAG)
+
+docker-stop-http: ## Stop HTTP Docker container
+	docker stop mcp-govee-http || true
+	docker rm mcp-govee-http || true
+
+docker-logs-http: ## View HTTP Docker container logs
+	docker logs -f mcp-govee-http
+
+docker-compose-http: ## Start HTTP server with docker-compose
+	docker-compose -f docker-compose-http.yml up -d
+
+docker-compose-http-down: ## Stop HTTP server docker-compose
+	docker-compose -f docker-compose-http.yml down
 
 docker-push: ## Push Docker image to registry (update image name first)
 	@echo "Update image name in Makefile before pushing"
 	# docker push your-registry.com/$(DOCKER_IMAGE):$(DOCKER_TAG)
 
-k8s-deploy: ## Deploy to Kubernetes
+k8s-deploy: ## Deploy to Kubernetes (stdio mode)
 	kubectl apply -k k8s/
+
+k8s-deploy-http: ## Deploy to Kubernetes (HTTP/SSE mode)
+	kubectl apply -f k8s/namespace.yaml
+	kubectl apply -f k8s/secret.yaml
+	kubectl apply -f k8s/deployment-http.yaml
+	kubectl apply -f k8s/service-http.yaml
 
 k8s-delete: ## Delete from Kubernetes
 	kubectl delete -k k8s/
 
-k8s-logs: ## View Kubernetes logs
+k8s-delete-http: ## Delete HTTP deployment from Kubernetes
+	kubectl delete -f k8s/service-http.yaml || true
+	kubectl delete -f k8s/deployment-http.yaml || true
+
+k8s-logs: ## View Kubernetes logs (stdio mode)
 	kubectl logs -n $(K8S_NAMESPACE) deployment/mcp-govee-server -f
+
+k8s-logs-http: ## View Kubernetes logs (HTTP mode)
+	kubectl logs -n $(K8S_NAMESPACE) deployment/mcp-govee-http-server -f
 
 k8s-status: ## Check Kubernetes deployment status
 	kubectl get all -n $(K8S_NAMESPACE)

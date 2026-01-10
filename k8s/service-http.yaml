@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-govee-http
+  namespace: mcp-govee
+  labels:
+    app: mcp-govee
+    component: http-server
+spec:
+  type: LoadBalancer
+  selector:
+    app: mcp-govee
+    component: http-server
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+---
+# Optional: Ingress for HTTPS access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-govee-http
+  namespace: mcp-govee
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - mcp.yourdomain.com
+    secretName: mcp-govee-tls
+  rules:
+  - host: mcp.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mcp-govee-http
+            port:
+              number: 8080

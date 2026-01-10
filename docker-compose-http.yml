@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mcp-govee-http:
+    build:
+      context: .
+      dockerfile: Dockerfile.http
+    container_name: mcp-govee-http-server
+    env_file:
+      - .env
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: false
+    tmpfs:
+      - /tmp

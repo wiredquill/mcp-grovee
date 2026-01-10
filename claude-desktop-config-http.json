@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "govee": {
+      "url": "http://remote-machine-ip:8080/sse",
+      "transport": "sse"
+    }
+  }
+}

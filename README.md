@@ -99,6 +99,8 @@ If device address and model are not specified, the server will control the first
 
 To use this MCP server with Claude Desktop:
 
+#### Local Setup (Server on Same Machine)
+
 1. Locate your Claude Desktop configuration file:
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -111,7 +113,7 @@ To use this MCP server with Claude Desktop:
    {
      "mcpServers": {
        "govee": {
-         "command": "python",
+         "command": "python3",
          "args": ["-m", "src.server"],
          "cwd": "/absolute/path/to/mcp-grovee",
          "env": {
@@ -140,6 +142,62 @@ To use this MCP server with Claude Desktop:
      }
    }
    ```
+
+#### Remote Setup (Server on Different Machine)
+
+**If the MCP server is deployed on a remote machine**, you have two options:
+
+##### Option 1: HTTP/SSE Transport (Recommended ⭐)
+
+The cleanest way to access a remote MCP server. See [HTTP_SETUP.md](HTTP_SETUP.md) for detailed instructions.
+
+**On remote machine:**
+```bash
+docker-compose -f docker-compose-http.yml up -d
+```
+
+**On your laptop (Claude Desktop config):**
+```json
+{
+  "mcpServers": {
+    "govee": {
+      "url": "http://192.168.1.100:8080/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+**Advantages:**
+- ✅ Simpler setup
+- ✅ Better performance
+- ✅ No SSH key management
+- ✅ Works through firewalls easily
+
+See [HTTP_SETUP.md](HTTP_SETUP.md) for complete HTTP/SSE setup guide.
+
+##### Option 2: SSH Transport
+
+Alternative method using SSH. See [REMOTE_SETUP.md](REMOTE_SETUP.md) for detailed instructions.
+
+```json
+{
+  "mcpServers": {
+    "govee": {
+      "command": "ssh",
+      "args": [
+        "user@remote-machine-ip",
+        "/usr/local/bin/mcp-govee.sh"
+      ]
+    }
+  }
+}
+```
+
+**When to use SSH:**
+- You don't want to expose an HTTP port
+- You already have SSH configured
+- See [REMOTE_SETUP.md](REMOTE_SETUP.md) for complete SSH setup guide
 
 3. Restart Claude Desktop
 
