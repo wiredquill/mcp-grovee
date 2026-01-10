@@ -33,11 +33,17 @@ echo ""
 
 if [ -f ".env" ]; then
     echo "✓ .env file already exists"
-    source .env
-    if [ -z "$GOVEE_API_KEY" ]; then
+    # Load environment variables from .env (ignoring comments)
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+    if [ -z "$GOVEE_API_KEY" ] || [ "$GOVEE_API_KEY" = "your_govee_api_key_here" ]; then
         echo "⚠️  GOVEE_API_KEY not set in .env"
         read -p "Enter your Govee API key: " api_key
-        echo "GOVEE_API_KEY=$api_key" >> .env
+        # Update or add GOVEE_API_KEY in .env
+        if grep -q "^GOVEE_API_KEY=" .env; then
+            sed -i.bak "s/^GOVEE_API_KEY=.*/GOVEE_API_KEY=$api_key/" .env && rm -f .env.bak
+        else
+            echo "GOVEE_API_KEY=$api_key" >> .env
+        fi
     fi
 else
     echo "Get your Govee API key from: https://developer.govee.com/"
