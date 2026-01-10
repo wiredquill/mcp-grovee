@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "govee": {
+      "command": "python",
+      "args": [
+        "-m",
+        "src.server"
+      ],
+      "cwd": "/absolute/path/to/mcp-grovee",
+      "env": {
+        "GOVEE_API_KEY": "your_govee_api_key_here",
+        "GOVEE_DEVICE_ADDRESS": "",
+        "GOVEE_DEVICE_MODEL": ""
+      }
+    }
+  }
+}

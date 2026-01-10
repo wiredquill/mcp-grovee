@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-govee-server
+  namespace: mcp-govee
+  labels:
+    app: mcp-govee
+    component: server
+spec:
+  replicas: 1  # Keep at 1 to avoid conflicting commands to the same device
+  strategy:
+    type: Recreate  # Use Recreate to avoid multiple instances controlling the device
+  selector:
+    matchLabels:
+      app: mcp-govee
+      component: server
+  template:
+    metadata:
+      labels:
+        app: mcp-govee
+        component: server
+    spec:
+      containers:
+      - name: mcp-govee
+        image: mcp-govee:latest  # Replace with your registry/image:tag
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - secretRef:
+            name: govee-credentials
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        # Liveness probe
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Readiness probe
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # Volume mounts for writable directories
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /home/mcp/.cache
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      # Security context for pod
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # Node affinity (optional)
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - arm64

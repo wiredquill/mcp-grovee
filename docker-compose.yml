@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mcp-govee:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-govee-server
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Use stdio transport for MCP
+    stdin_open: true
+    tty: true
+    # Network mode for local testing
+    network_mode: host
+    # Optional: volume mount for development
+    volumes:
+      - ./src:/app/src:ro
+    # Health check (optional)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

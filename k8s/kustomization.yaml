@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mcp-govee
+
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+
+# Optional: Configure image
+images:
+  - name: mcp-govee
+    newName: your-registry.com/mcp-govee  # Replace with your registry
+    newTag: latest
+
+# Optional: Common labels
+commonLabels:
+  app.kubernetes.io/name: mcp-govee
+  app.kubernetes.io/component: server
+  app.kubernetes.io/managed-by: kustomize
+
+# Optional: Namespace-scoped resources
+configurations:
+  - kustomizeconfig.yaml

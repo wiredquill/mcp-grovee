@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "govee": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--env-file",
+        "/absolute/path/to/mcp-grovee/.env",
+        "mcp-govee:latest"
+      ]
+    }
+  }
+}
