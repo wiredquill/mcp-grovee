@@ -278,8 +278,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY src/ ./src/
 
-# Create non-root user
-RUN useradd -m -u 1000 mcp && chown -R mcp:mcp /app
+# Create non-root user (SUSE-specific: create group first)
+RUN groupadd -g 1000 mcp && \
+    useradd -m -u 1000 -g mcp mcp && \
+    chown -R mcp:mcp /app
 USER mcp
 
 # Run server
@@ -292,6 +294,7 @@ CMD ["python", "-m", "src.server"]
 2. **Security**: Non-root user
 3. **Minimal size**: Clean package cache
 4. **Build dependencies**: gcc for compiling Python packages
+5. **SUSE compatibility**: Explicitly create group before user (SUSE's useradd doesn't auto-create matching group)
 
 ### 5.3 Docker Compose for Testing
 

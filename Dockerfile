@@ -21,7 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 # Create non-root user for security
-RUN useradd -m -u 1000 mcp && \
+RUN groupadd -g 1000 mcp && \
+    useradd -m -u 1000 -g mcp mcp && \
     chown -R mcp:mcp /app
 
 # Switch to non-root user
