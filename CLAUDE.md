@@ -2,6 +2,23 @@
 
 This document provides guidelines for AI assistants (like Claude) working on the MCP Govee Controller project.
 
+---
+
+## ⚠️ CRITICAL PLATFORM REQUIREMENTS ⚠️
+
+**THIS PROJECT USES SUSE BCI (Base Container Images) - NOT Debian/Ubuntu**
+
+Before writing ANY system-level commands:
+1. ✅ **Verify commands are SUSE/openSUSE compatible**
+2. ✅ **Use `zypper` (NOT `apt` or `apt-get`)**
+3. ✅ **Use SUSE package names** (e.g., `python311-devel` NOT `python3-dev`)
+4. ✅ **Create groups before users** (SUSE's `useradd` doesn't auto-create groups)
+5. ✅ **Test on actual SUSE BCI image**
+
+**See the "SUSE/openSUSE Platform Requirements" section below for complete details.**
+
+---
+
 ## Package Version Policy
 
 **IMPORTANT: Always use the latest available package versions unless there is a specific reason not to.**
@@ -48,6 +65,221 @@ Initial specification was `govee-api-laggat>=0.3.0`, but the latest available ve
 **Corrected to**: `govee-api-laggat>=0.2.2`
 
 **Lesson**: Always verify the actual latest version exists before specifying it.
+
+## SUSE/openSUSE Platform Requirements
+
+**CRITICAL: This project uses SUSE BCI (Base Container Images). Always verify commands are compatible with openSUSE and SUSE Enterprise Linux (SLE).**
+
+### Platform Differences from Debian/Ubuntu
+
+SUSE-based systems have significant differences from Debian/Ubuntu that you MUST account for:
+
+| Area | Debian/Ubuntu | SUSE/openSUSE | Impact |
+|------|---------------|---------------|--------|
+| **Package Manager** | `apt`, `apt-get` | `zypper` | All package operations different |
+| **User Management** | `useradd` auto-creates group | `useradd` requires explicit group | User creation fails without group |
+| **Python Executable** | `python` or `python3` | `python3` only | CMD/scripts using `python` fail |
+| **System Packages** | `python3-dev` | `python311-devel` | Build dependencies have different names |
+| **Init System** | systemd (standard) | systemd (similar) | Mostly compatible |
+| **Package Names** | Often `-dev` suffix | Often `-devel` suffix | Must translate package names |
+
+### Mandatory Verification Process
+
+**Before writing any system-level commands in Dockerfiles, scripts, or documentation:**
+
+1. **Verify Package Names**
+   ```bash
+   # Search for packages in SUSE
+   zypper search <package-name>
+
+   # Get package info
+   zypper info <package-name>
+   ```
+
+2. **Verify Command Syntax**
+   - Don't assume commands work the same as Debian/Ubuntu
+   - Check SUSE/openSUSE documentation
+   - Test in a SUSE container if uncertain
+
+3. **Test in Target Environment**
+   ```bash
+   # Spin up a test container
+   docker run -it registry.suse.com/bci/python:3.11 /bin/bash
+
+   # Test your commands
+   zypper refresh
+   zypper install -y gcc python311-devel
+   groupadd -g 1000 testuser
+   useradd -u 1000 -g testuser testuser
+   ```
+
+### SUSE-Specific Command Reference
+
+#### Package Management
+
+```bash
+# Update package lists (equivalent to apt update)
+zypper refresh
+
+# Install packages (equivalent to apt install)
+zypper install -y <package>
+
+# Install without recommends (keep image small)
+zypper install -y --no-recommends <package>
+
+# Search for packages
+zypper search <pattern>
+
+# Clean package cache (reduce image size)
+zypper clean -a
+
+# List installed packages
+zypper packages --installed-only
+```
+
+#### User Management
+
+```bash
+# CORRECT: Create group first, then user
+groupadd -g 1000 username
+useradd -m -u 1000 -g username username
+
+# WRONG: This fails on SUSE (works on Debian/Ubuntu)
+useradd -m -u 1000 username  # Error: group doesn't exist
+
+# WRONG: -U flag may not work as expected
+useradd -m -u 1000 -U username  # Unreliable across SUSE versions
+```
+
+#### Python Executable Path
+
+```bash
+# CORRECT: Use python3 in SUSE BCI images
+CMD ["python3", "-m", "src.server"]
+python3 --version
+
+# WRONG: Using "python" directly (not available by default)
+CMD ["python", "-m", "src.server"]  # Error: executable file not found in $PATH
+python --version  # Command not found
+
+# Note: pip, pip3 are typically available
+pip install package
+pip3 install package
+```
+
+**Why**: SUSE BCI Python images provide `python3` and `python3.11` but not a `python` symlink by default.
+
+#### Common Package Name Translations
+
+| Purpose | Debian/Ubuntu | SUSE/openSUSE |
+|---------|---------------|---------------|
+| Python dev headers | `python3-dev` | `python311-devel` |
+| C compiler | `build-essential` | `gcc`, `make` |
+| SSL/TLS | `libssl-dev` | `libopenssl-devel` |
+| SQLite | `libsqlite3-dev` | `sqlite3-devel` |
+| PostgreSQL | `libpq-dev` | `postgresql-devel` |
+| MySQL | `libmysqlclient-dev` | `libmysqlclient-devel` |
+
+### Dockerfile Best Practices for SUSE
+
+```dockerfile
+# Use SUSE BCI base image
+FROM registry.suse.com/bci/python:3.11
+
+# Package installation pattern
+RUN zypper refresh && \
+    zypper install -y --no-recommends \
+    gcc \
+    python311-devel \
+    make && \
+    zypper clean -a  # Always clean cache
+
+# User creation pattern (CRITICAL)
+RUN groupadd -g 1000 appuser && \
+    useradd -m -u 1000 -g appuser appuser && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Run application (use python3, not python)
+CMD ["python3", "-m", "src.server"]
+```
+
+### Testing Checklist
+
+Before committing Dockerfile or system-level changes:
+
+- [ ] Verified package names exist in SUSE repositories
+- [ ] Tested zypper commands work (not apt commands)
+- [ ] User/group creation uses explicit group creation
+- [ ] Package names use SUSE naming conventions (-devel not -dev)
+- [ ] Cleaned package cache with `zypper clean -a`
+- [ ] Tested build on actual SUSE BCI image
+- [ ] Verified non-root user creation works
+
+### Common Mistakes to Avoid
+
+❌ **WRONG - Using Debian/Ubuntu commands:**
+```dockerfile
+RUN apt update && apt install -y python3-dev
+RUN useradd -m appuser  # Fails on SUSE
+```
+
+✅ **CORRECT - Using SUSE commands:**
+```dockerfile
+RUN zypper refresh && zypper install -y --no-recommends python311-devel
+RUN groupadd -g 1000 appuser && useradd -m -u 1000 -g appuser appuser
+```
+
+❌ **WRONG - Assuming package names:**
+```dockerfile
+RUN zypper install -y python3-dev  # Doesn't exist on SUSE
+```
+
+✅ **CORRECT - Using actual SUSE package names:**
+```dockerfile
+RUN zypper install -y python311-devel  # Correct SUSE package
+```
+
+❌ **WRONG - Using `python` executable:**
+```dockerfile
+CMD ["python", "-m", "src.server"]  # Error: executable file not found in $PATH
+```
+
+✅ **CORRECT - Using `python3` executable:**
+```dockerfile
+CMD ["python3", "-m", "src.server"]  # Works on SUSE BCI
+```
+
+### When in Doubt
+
+If you're unsure about a command or package name:
+
+1. **Check the SUSE BCI documentation**: https://registry.suse.com/
+2. **Test in a container**: `docker run -it registry.suse.com/bci/python:3.11 /bin/bash`
+3. **Search SUSE packages**: https://software.opensuse.org/
+4. **Consult openSUSE docs**: https://doc.opensuse.org/
+5. **Ask the user** if verification isn't possible
+
+### Real-World Example: User Creation Issue
+
+**Problem encountered:**
+```dockerfile
+RUN useradd -m -u 1000 mcp && chown -R mcp:mcp /app
+# Error: chown: invalid group: 'mcp:mcp'
+```
+
+**Root cause:** SUSE's `useradd` doesn't auto-create matching group
+
+**Solution:**
+```dockerfile
+RUN groupadd -g 1000 mcp && \
+    useradd -m -u 1000 -g mcp mcp && \
+    chown -R mcp:mcp /app
+```
+
+**Prevention:** Always verify user management commands on target platform
 
 ## Code Maintenance Guidelines
 
@@ -338,21 +570,37 @@ When uncertain about implementation:
 
 1. **Does this follow the MCP specification?**
 2. **Are we using the latest compatible versions?**
-3. **Is this secure by default?**
-4. **Will this work in Kubernetes?**
-5. **Is the error handling user-friendly?**
-6. **Is the documentation updated?**
-7. **Can this be tested easily?**
+3. **Are all commands verified for SUSE/openSUSE compatibility?**
+   - Using `zypper` instead of `apt`?
+   - Using correct package names (e.g., `-devel` not `-dev`)?
+   - Creating groups before users?
+   - Testing on actual SUSE BCI image?
+4. **Is this secure by default?**
+5. **Will this work in Kubernetes?**
+6. **Is the error handling user-friendly?**
+7. **Is the documentation updated?**
+8. **Can this be tested easily?**
 
 ## Resources
 
+### Project-Specific
 - [MCP Specification](https://modelcontextprotocol.io/)
 - [FastMCP Repository](https://github.com/jlowin/fastmcp)
 - [Govee API Docs](https://developer.govee.com/)
 - [govee-api-laggat GitHub](https://github.com/LaggAt/python-govee-api)
+
+### SUSE/openSUSE (CRITICAL - Review Before Any System Commands)
 - [SUSE BCI Registry](https://registry.suse.com/)
+- [SUSE BCI Documentation](https://documentation.suse.com/container/)
+- [openSUSE Documentation](https://doc.opensuse.org/)
+- [openSUSE Package Search](https://software.opensuse.org/)
+- [Zypper Command Reference](https://en.opensuse.org/SDB:Zypper_usage)
+- [SUSE vs Debian Command Comparison](https://en.opensuse.org/SDB:SuSE_vs_Debian)
+
+### General Development
 - [Python Async Best Practices](https://docs.python.org/3/library/asyncio.html)
 - [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/)
+- [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)
 
 ## Contact and Support
 

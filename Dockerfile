@@ -35,4 +35,4 @@ ENV PYTHONPATH=/app
 EXPOSE 8080
 
 # Run the MCP server
-CMD ["python", "-m", "src.server"]
+CMD ["python3", "-m", "src.server"]

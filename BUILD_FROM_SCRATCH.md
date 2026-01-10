@@ -285,7 +285,7 @@ RUN groupadd -g 1000 mcp && \
 USER mcp
 
 # Run server
-CMD ["python", "-m", "src.server"]
+CMD ["python3", "-m", "src.server"]
 ```
 
 **Best Practices Applied:**
