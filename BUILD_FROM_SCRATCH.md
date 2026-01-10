@@ -129,7 +129,7 @@ Create `requirements.txt` with dependencies:
 
 ```text
 fastmcp>=0.2.0
-govee-api-laggat>=0.3.0
+govee-api-laggat>=0.2.2
 python-dotenv>=1.0.0
 httpx>=0.27.0
 pydantic>=2.0.0
@@ -137,7 +137,7 @@ pydantic>=2.0.0
 
 **Why these versions?**
 - `fastmcp>=0.2.0`: Latest stable MCP implementation
-- `govee-api-laggat>=0.3.0`: Async support
+- `govee-api-laggat>=0.2.2`: Latest available version with async support
 - `python-dotenv`: Environment variable management
 - `httpx`: Modern async HTTP client
 - `pydantic`: Data validation
