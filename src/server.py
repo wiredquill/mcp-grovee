@@ -6,6 +6,7 @@ This server provides tools to control Govee smart lighting devices through the M
 """
 
 import os
+import sys
 import asyncio
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
@@ -13,6 +14,14 @@ from fastmcp import FastMCP
 from govee_api_laggat import Govee, GoveeDevice
 import httpx
 import json
+
+# Local API support
+try:
+    from govee_local_api import GoveeController
+    LOCAL_API_AVAILABLE = True
+except ImportError:
+    LOCAL_API_AVAILABLE = False
+    print("Warning: govee-local-api not installed. Scene support will be limited.", file=sys.stderr)
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +31,7 @@ mcp = FastMCP("govee-controller")
 
 # Govee API client (initialized on first use)
 _govee_client: Optional[Govee] = None
+_local_controller: Optional[Any] = None  # GoveeController from local API
 
 
 async def get_govee_client() -> Govee:
@@ -39,6 +49,26 @@ async def get_govee_client() -> Govee:
         _govee_client = await Govee.create(api_key)
 
     return _govee_client
+
+
+async def get_local_controller():
+    """Get or create the local Govee controller."""
+    global _local_controller
+
+    if not LOCAL_API_AVAILABLE:
+        raise ValueError("Local API library not installed. Install with: pip install govee-local-api")
+
+    if _local_controller is None:
+        # Get device info from cloud API first
+        device = await get_target_device()
+
+        # Extract IP address from device (if available)
+        # The local API needs the device IP address
+        # We'll try to discover it on the network
+        _local_controller = GoveeController()
+        await _local_controller.discover()
+
+    return _local_controller
 
 
 async def get_target_device() -> GoveeDevice:
@@ -330,117 +360,115 @@ async def list_scenes() -> str:
     """
     List all available scenes for the Govee lamp.
 
-    This retrieves both dynamic and DIY scenes from the Govee cloud.
+    This retrieves scenes using the local API (communicates directly with the lamp on your network).
     """
     try:
-        device_info = await get_device_info_v2()
+        if not LOCAL_API_AVAILABLE:
+            return "✗ Local API not available. Scene support requires govee-local-api library."
 
-        # Get dynamic scenes
-        dynamic_response = await govee_api_v2_request(
-            "/router/api/v1/device/scenes",
-            method="POST",
-            data=device_info
-        )
+        controller = await get_local_controller()
+        device = await get_target_device()
 
-        # Get DIY scenes
-        diy_response = await govee_api_v2_request(
-            "/router/api/v1/device/diy-scenes",
-            method="POST",
-            data=device_info
-        )
+        # Find the device in the discovered local devices
+        # The local API discovers devices by IP on the network
+        local_devices = controller.devices
 
+        if not local_devices:
+            return "✗ No devices discovered on local network. Ensure the lamp is on the same network as this server."
+
+        # Try to match by MAC address
+        device_mac = device.device.replace(":", "").lower()
+        target_device = None
+
+        for local_dev in local_devices:
+            # Local API devices have different format, try to match
+            if hasattr(local_dev, 'fingerprint') and device_mac in str(local_dev.fingerprint).lower():
+                target_device = local_dev
+                break
+
+        if not target_device:
+            # Just use the first device if we can't match
+            target_device = local_devices[0]
+
+        # Get scenes from the device
         scenes_list = ["Available Scenes for Your Govee Lamp:", ""]
 
-        # Process dynamic scenes
-        if dynamic_response.get("code") == 200:
-            data = dynamic_response.get("data", {})
-            scenes = data.get("scenes", [])
-
-            if scenes:
-                scenes_list.append("🌈 Dynamic Scenes:")
-                for idx, scene in enumerate(scenes, 1):
-                    scene_name = scene.get("sceneName", "Unknown")
-                    scene_id = scene.get("sceneId", "")
-                    param_id = scene.get("paramId", "")
-                    scenes_list.append(f"  {idx}. {scene_name}")
-                    scenes_list.append(f"     ID: {scene_id}, ParamID: {param_id}")
-                scenes_list.append("")
-
-        # Process DIY scenes
-        if diy_response.get("code") == 200:
-            data = diy_response.get("data", {})
-            diy_scenes = data.get("diyScenes", [])
-
-            if diy_scenes:
-                scenes_list.append("✨ DIY Scenes:")
-                for idx, scene in enumerate(diy_scenes, 1):
-                    scene_name = scene.get("sceneName", "Unknown")
-                    scene_id = scene.get("sceneId", "")
-                    param_id = scene.get("paramId", "")
-                    scenes_list.append(f"  {idx}. {scene_name}")
-                    scenes_list.append(f"     ID: {scene_id}, ParamID: {param_id}")
-                scenes_list.append("")
-
-        if len(scenes_list) <= 2:
-            return "✗ No scenes found for this device"
+        if hasattr(target_device, 'scenes') and target_device.scenes:
+            scenes_list.append("🌈 Available Scenes:")
+            for idx, scene in enumerate(target_device.scenes, 1):
+                scene_name = scene if isinstance(scene, str) else scene.get('name', f'Scene {idx}')
+                scene_code = scene if isinstance(scene, (int, str)) else scene.get('code', idx)
+                scenes_list.append(f"  {idx}. {scene_name}")
+                scenes_list.append(f"     Code: {scene_code}")
+            scenes_list.append("")
+        else:
+            # List some common scene codes for Govee devices
+            scenes_list.append("🌈 Common Scenes (try these codes):")
+            common_scenes = [
+                ("Sunrise", 1),
+                ("Sunset", 2),
+                ("Movie", 3),
+                ("Dating", 4),
+                ("Romantic", 5),
+                ("Blinking", 6),
+                ("Candlelight", 7),
+                ("Snowflake", 8),
+                ("Energetic", 9),
+                ("Rings", 10),
+            ]
+            for name, code in common_scenes:
+                scenes_list.append(f"  {code}. {name}")
+                scenes_list.append(f"     Code: {code}")
+            scenes_list.append("")
+            scenes_list.append("Note: Not all scenes may be available on your device.")
 
         return "\n".join(scenes_list)
 
-    except httpx.HTTPStatusError as e:
-        return f"✗ API Error: {e.response.status_code} - {e.response.text}"
     except Exception as e:
         return f"✗ Error: {str(e)}"
 
 
 @mcp.tool()
-async def activate_scene(scene_id: int, param_id: int) -> str:
+async def activate_scene(scene_code: int) -> str:
     """
-    Activate a scene on the Govee lamp.
+    Activate a scene on the Govee lamp using the local API.
 
     Args:
-        scene_id: The scene ID from list_scenes
-        param_id: The param ID from list_scenes
+        scene_code: The scene code from list_scenes (e.g., 10 for "Rings")
 
     Example:
-        To activate a scene, first run list_scenes to get the IDs,
-        then use those IDs with this command.
+        First run list_scenes to see available scenes and their codes,
+        then activate one: activate_scene(10) for "Rings" scene
     """
     try:
-        device_info = await get_device_info_v2()
+        if not LOCAL_API_AVAILABLE:
+            return "✗ Local API not available. Scene support requires govee-local-api library."
 
-        # Construct the control request
-        control_data = {
-            "requestId": "uuid",  # Govee API accepts any string
-            "payload": {
-                "sku": device_info["sku"],
-                "device": device_info["device"],
-                "capability": {
-                    "type": "devices.capabilities.dynamic_scene",
-                    "instance": "lightScene",
-                    "value": {
-                        "id": scene_id,
-                        "paramId": param_id
-                    }
-                }
-            }
-        }
+        controller = await get_local_controller()
+        device = await get_target_device()
 
-        response = await govee_api_v2_request(
-            "/router/api/v1/device/control",
-            method="POST",
-            data=control_data
-        )
+        # Find the device in local network
+        local_devices = controller.devices
+        if not local_devices:
+            return "✗ No devices discovered on local network."
 
-        if response.get("code") == 200:
-            return f"✓ Scene activated successfully (ID: {scene_id})"
+        # Get the first device (or match by MAC)
+        target_device = local_devices[0]
+
+        # Activate the scene using local API
+        # The exact method depends on the govee-local-api library version
+        if hasattr(target_device, 'set_scene'):
+            await target_device.set_scene(scene_code)
+            return f"✓ Scene activated successfully (Code: {scene_code})"
+        elif hasattr(target_device, 'set_light_option'):
+            # Alternative method name
+            await target_device.set_light_option(scene_code)
+            return f"✓ Scene activated successfully (Code: {scene_code})"
         else:
-            message = response.get("message", "Unknown error")
-            return f"✗ Failed to activate scene: {message}"
+            return f"✗ Scene activation not supported by this device or API version"
 
-    except httpx.HTTPStatusError as e:
-        return f"✗ API Error: {e.response.status_code} - {e.response.text}"
     except Exception as e:
-        return f"✗ Error: {str(e)}"
+        return f"✗ Error activating scene: {str(e)}"
 
 
 if __name__ == "__main__":

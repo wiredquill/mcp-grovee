@@ -1,5 +1,6 @@
 fastmcp>=0.2.0
 govee-api-laggat>=0.2.2
+govee-local-api>=2.3.0
 python-dotenv>=1.0.0
 httpx>=0.27.0
 pydantic>=2.0.0

@@ -10,6 +10,7 @@ A Model Context Protocol (MCP) server for controlling Govee RGBIC smart lighting
 - Set RGB colors
 - Set color temperature
 - Use preset colors (red, green, blue, yellow, cyan, magenta, white, warm_white, orange, purple, pink)
+- **List and activate scenes** (using local API - requires server on same network as lamp)
 - Query device state
 - List all available Govee devices
 
@@ -18,6 +19,7 @@ A Model Context Protocol (MCP) server for controlling Govee RGBIC smart lighting
 - Govee API Key ([Get one here](https://developer.govee.com/))
 - Python 3.11+ OR Docker
 - Your Govee device(s) set up in the Govee Home app
+- **For scene support**: MCP server must be on the same local network as your Govee device
 
 ## Quick Start
 
@@ -231,8 +233,8 @@ The MCP server provides the following tools:
 | `set_color` | Set RGB color | `red`, `green`, `blue` (0-255) |
 | `set_color_temperature` | Set color temperature | `temperature` (2000-9000K) |
 | `set_preset_color` | Set a preset color | `color_name` (red, green, blue, etc.) |
-| `list_scenes` | List all available scenes | None |
-| `activate_scene` | Activate a specific scene | `scene_id`, `param_id` |
+| `list_scenes` | List all available scenes (Local API) | None |
+| `activate_scene` | Activate a specific scene (Local API) | `scene_code` |
 | `get_device_state` | Get current device state | None |
 | `list_devices` | List all Govee devices | None |
 
