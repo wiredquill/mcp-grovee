@@ -292,7 +292,16 @@ if __name__ == "__main__":
     # Run the MCP server with appropriate transport
     if transport == "sse":
         host = os.getenv("MCP_HOST", "0.0.0.0")
-        port = int(os.getenv("MCP_PORT", "8080"))
+
+        # Parse port with error handling
+        port_str = os.getenv("MCP_PORT", "8080")
+        try:
+            port = int(port_str)
+        except ValueError:
+            print(f"ERROR: Invalid MCP_PORT value: '{port_str}'. Using default port 8080.", file=sys.stderr)
+            print(f"Please check your .env file and ensure MCP_PORT=8080", file=sys.stderr)
+            port = 8080
+
         print(f"Starting MCP server with SSE transport on {host}:{port}", file=sys.stderr)
         mcp.run(transport="sse", host=host, port=port)
     else:
