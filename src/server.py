@@ -17,6 +17,7 @@ import json
 
 # Import our local API client
 from .local_api import GoveeLocalClient, COMMON_SCENES, get_scene_name
+from .undoc_api import GoveeUndocumentedAPI, OneClickShortcut
 LOCAL_API_AVAILABLE = True
 
 # Load environment variables
@@ -25,9 +26,10 @@ load_dotenv()
 # Initialize FastMCP server
 mcp = FastMCP("govee-controller")
 
-# Govee API client (initialized on first use)
+# Govee API clients (initialized on first use)
 _govee_client: Optional[Govee] = None
 _local_client: Optional[GoveeLocalClient] = None  # Direct UDP local client
+_undoc_client: Optional[GoveeUndocumentedAPI] = None  # Undocumented API client
 
 
 async def get_govee_client() -> Govee:
@@ -64,6 +66,25 @@ async def get_local_client() -> GoveeLocalClient:
         _local_client = GoveeLocalClient(device_ip=device_ip)
 
     return _local_client
+
+
+async def get_undoc_client() -> GoveeUndocumentedAPI:
+    """Get or create the undocumented API client."""
+    global _undoc_client
+
+    if _undoc_client is None:
+        email = os.getenv("GOVEE_EMAIL", "").strip()
+        password = os.getenv("GOVEE_PASSWORD", "").strip()
+
+        if not email or not password:
+            raise ValueError(
+                "GOVEE_EMAIL and GOVEE_PASSWORD not set. Please set them in your .env file "
+                "to access tap-to-run/one-click shortcuts."
+            )
+
+        _undoc_client = GoveeUndocumentedAPI(email=email, password=password)
+
+    return _undoc_client
 
 
 async def get_target_device() -> GoveeDevice:
@@ -695,6 +716,136 @@ async def activate_platform_scene_tool(scene_name: str) -> str:
             return f"✓ Platform scene '{scene_name}' activated"
         else:
             return f"✗ Failed to activate platform scene '{scene_name}'"
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def list_tap_to_run_shortcuts() -> str:
+    """
+    List all tap-to-run/one-click shortcuts configured in the Govee app.
+
+    This uses the undocumented Govee API and requires GOVEE_EMAIL and GOVEE_PASSWORD.
+    Tap-to-run shortcuts are automation scenes you create in the Govee app.
+    """
+    try:
+        client = await get_undoc_client()
+
+        # Get shortcuts
+        shortcuts = await client.get_one_click_shortcuts()
+
+        if not shortcuts:
+            return "No tap-to-run shortcuts found.\n\nCreate automation shortcuts in the Govee app to see them here."
+
+        shortcuts_list = ["Tap-to-Run / One-Click Shortcuts (Undocumented API):", ""]
+
+        for idx, shortcut in enumerate(shortcuts, 1):
+            shortcuts_list.append(f"{idx}. {shortcut.name}")
+            shortcuts_list.append(f"   ID: {shortcut.shortcut_id}")
+            shortcuts_list.append(f"   Devices: {len(shortcut.devices)} device(s)")
+            shortcuts_list.append(f"   IoT Rules: {len(shortcut.iot_rules)} rule(s)")
+            shortcuts_list.append("")
+
+        shortcuts_list.append("Note: Activation requires AWS IoT MQTT (coming soon)")
+        shortcuts_list.append('Use activate_tap_to_run_shortcut(shortcut_name) when available.')
+
+        return "\n".join(shortcuts_list)
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def list_light_effects() -> str:
+    """
+    List light effects from the Govee light effect library.
+
+    This retrieves additional scene information from the undocumented API.
+    Requires GOVEE_EMAIL and GOVEE_PASSWORD.
+    """
+    try:
+        client = await get_undoc_client()
+        device = await get_target_device()
+
+        # Get light effect library
+        categories = await client.get_light_effect_library(device.model)
+
+        if not categories:
+            return f"No light effects found for device model {device.model}"
+
+        effects_list = ["Light Effect Library (Undocumented API):", ""]
+        effects_list.append(f"Device: {device.model}")
+        effects_list.append("")
+
+        for category in categories:
+            cat_name = category.get("name", "Unknown Category")
+            scenes = category.get("scenes", [])
+
+            if scenes:
+                effects_list.append(f"Category: {cat_name} ({len(scenes)} effects)")
+
+                for scene in scenes[:10]:  # Limit to first 10 per category
+                    scene_name = scene.get("name", "Unnamed")
+                    scene_id = scene.get("sceneId", "")
+                    effects_list.append(f"  - {scene_name}")
+                    if scene_id:
+                        effects_list.append(f"    ID: {scene_id}")
+
+                if len(scenes) > 10:
+                    effects_list.append(f"  ... and {len(scenes) - 10} more")
+
+                effects_list.append("")
+
+        return "\n".join(effects_list)
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def activate_tap_to_run_shortcut(shortcut_name: str) -> str:
+    """
+    Activate a tap-to-run/one-click shortcut.
+
+    Args:
+        shortcut_name: Name of the shortcut to activate (from list_tap_to_run_shortcuts)
+
+    Note: This feature requires AWS IoT MQTT implementation, which is not yet complete.
+          Currently, this will validate the shortcut but not activate it.
+
+    Example:
+        activate_tap_to_run_shortcut("Morning Routine")
+    """
+    try:
+        client = await get_undoc_client()
+
+        # Get all shortcuts
+        shortcuts = await client.get_one_click_shortcuts()
+
+        # Find matching shortcut
+        matching_shortcut = None
+        for shortcut in shortcuts:
+            if shortcut.name.lower() == shortcut_name.lower():
+                matching_shortcut = shortcut
+                break
+
+        if not matching_shortcut:
+            available = [s.name for s in shortcuts]
+            return f"✗ Shortcut '{shortcut_name}' not found.\n\nAvailable shortcuts: {', '.join(available)}"
+
+        # Validate shortcut has IoT rules
+        if not matching_shortcut.iot_rules:
+            return f"✗ Shortcut '{shortcut_name}' has no IoT rules configured"
+
+        # TODO: Implement AWS IoT MQTT execution
+        return (
+            f"ℹ️ Shortcut '{shortcut_name}' found with {len(matching_shortcut.iot_rules)} IoT rule(s)\n\n"
+            "AWS IoT MQTT activation is not yet implemented.\n"
+            "This feature will be available in a future update.\n\n"
+            "For now, use the official platform scenes (list_platform_scenes, list_diy_scenes) "
+            "or local UDP scenes (list_scenes) which are fully functional."
+        )
 
     except Exception as e:
         return f"✗ Error: {str(e)}"
