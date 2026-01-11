@@ -206,6 +206,8 @@ Alternative method using SSH. See [REMOTE_SETUP.md](REMOTE_SETUP.md) for detaile
    - "Set the lamp to blue"
    - "Set brightness to 50%"
    - "What's the current state of my lamp?"
+   - "List available scenes for my lamp"
+   - "Activate the sunset scene" (after listing scenes to get IDs)
 
 ### n8n Integration
 
@@ -229,6 +231,8 @@ The MCP server provides the following tools:
 | `set_color` | Set RGB color | `red`, `green`, `blue` (0-255) |
 | `set_color_temperature` | Set color temperature | `temperature` (2000-9000K) |
 | `set_preset_color` | Set a preset color | `color_name` (red, green, blue, etc.) |
+| `list_scenes` | List all available scenes | None |
+| `activate_scene` | Activate a specific scene | `scene_id`, `param_id` |
 | `get_device_state` | Get current device state | None |
 | `list_devices` | List all Govee devices | None |
 

@@ -11,6 +11,8 @@ from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from govee_api_laggat import Govee, GoveeDevice
+import httpx
+import json
 
 # Load environment variables
 load_dotenv()
@@ -70,6 +72,53 @@ async def get_target_device() -> GoveeDevice:
 
     # Return first device if no filter specified
     return devices[0]
+
+
+# Govee API v2 helper functions for scene support
+async def govee_api_v2_request(endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:
+    """
+    Make a request to Govee API v2.
+
+    Args:
+        endpoint: API endpoint path
+        method: HTTP method (GET, POST, etc.)
+        data: Request payload for POST requests
+
+    Returns:
+        API response as dictionary
+    """
+    api_key = os.getenv("GOVEE_API_KEY")
+    if not api_key:
+        raise ValueError("GOVEE_API_KEY not found in environment variables")
+
+    base_url = "https://openapi.api.govee.com"
+    url = f"{base_url}{endpoint}"
+
+    headers = {
+        "Govee-API-Key": api_key,
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        if method == "GET":
+            response = await client.get(url, headers=headers, timeout=30.0)
+        elif method == "POST":
+            response = await client.post(url, headers=headers, json=data, timeout=30.0)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+
+        response.raise_for_status()
+        return response.json()
+
+
+async def get_device_info_v2() -> Dict[str, Any]:
+    """Get device information using API v2 format."""
+    device = await get_target_device()
+    # Convert to API v2 format: device address without colons, model as SKU
+    return {
+        "device": device.device.replace(":", ""),
+        "sku": device.model
+    }
 
 
 @mcp.tool()
@@ -274,6 +323,124 @@ async def set_preset_color(color_name: str) -> str:
 
     r, g, b = preset_colors[color_name_lower]
     return await set_color(r, g, b)
+
+
+@mcp.tool()
+async def list_scenes() -> str:
+    """
+    List all available scenes for the Govee lamp.
+
+    This retrieves both dynamic and DIY scenes from the Govee cloud.
+    """
+    try:
+        device_info = await get_device_info_v2()
+
+        # Get dynamic scenes
+        dynamic_response = await govee_api_v2_request(
+            "/router/api/v1/device/scenes",
+            method="POST",
+            data=device_info
+        )
+
+        # Get DIY scenes
+        diy_response = await govee_api_v2_request(
+            "/router/api/v1/device/diy-scenes",
+            method="POST",
+            data=device_info
+        )
+
+        scenes_list = ["Available Scenes for Your Govee Lamp:", ""]
+
+        # Process dynamic scenes
+        if dynamic_response.get("code") == 200:
+            data = dynamic_response.get("data", {})
+            scenes = data.get("scenes", [])
+
+            if scenes:
+                scenes_list.append("🌈 Dynamic Scenes:")
+                for idx, scene in enumerate(scenes, 1):
+                    scene_name = scene.get("sceneName", "Unknown")
+                    scene_id = scene.get("sceneId", "")
+                    param_id = scene.get("paramId", "")
+                    scenes_list.append(f"  {idx}. {scene_name}")
+                    scenes_list.append(f"     ID: {scene_id}, ParamID: {param_id}")
+                scenes_list.append("")
+
+        # Process DIY scenes
+        if diy_response.get("code") == 200:
+            data = diy_response.get("data", {})
+            diy_scenes = data.get("diyScenes", [])
+
+            if diy_scenes:
+                scenes_list.append("✨ DIY Scenes:")
+                for idx, scene in enumerate(diy_scenes, 1):
+                    scene_name = scene.get("sceneName", "Unknown")
+                    scene_id = scene.get("sceneId", "")
+                    param_id = scene.get("paramId", "")
+                    scenes_list.append(f"  {idx}. {scene_name}")
+                    scenes_list.append(f"     ID: {scene_id}, ParamID: {param_id}")
+                scenes_list.append("")
+
+        if len(scenes_list) <= 2:
+            return "✗ No scenes found for this device"
+
+        return "\n".join(scenes_list)
+
+    except httpx.HTTPStatusError as e:
+        return f"✗ API Error: {e.response.status_code} - {e.response.text}"
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def activate_scene(scene_id: int, param_id: int) -> str:
+    """
+    Activate a scene on the Govee lamp.
+
+    Args:
+        scene_id: The scene ID from list_scenes
+        param_id: The param ID from list_scenes
+
+    Example:
+        To activate a scene, first run list_scenes to get the IDs,
+        then use those IDs with this command.
+    """
+    try:
+        device_info = await get_device_info_v2()
+
+        # Construct the control request
+        control_data = {
+            "requestId": "uuid",  # Govee API accepts any string
+            "payload": {
+                "sku": device_info["sku"],
+                "device": device_info["device"],
+                "capability": {
+                    "type": "devices.capabilities.dynamic_scene",
+                    "instance": "lightScene",
+                    "value": {
+                        "id": scene_id,
+                        "paramId": param_id
+                    }
+                }
+            }
+        }
+
+        response = await govee_api_v2_request(
+            "/router/api/v1/device/control",
+            method="POST",
+            data=control_data
+        )
+
+        if response.get("code") == 200:
+            return f"✓ Scene activated successfully (ID: {scene_id})"
+        else:
+            message = response.get("message", "Unknown error")
+            return f"✗ Failed to activate scene: {message}"
+
+    except httpx.HTTPStatusError as e:
+        return f"✗ API Error: {e.response.status_code} - {e.response.text}"
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
 
 
 if __name__ == "__main__":
