@@ -139,11 +139,150 @@ async def govee_api_v2_request(endpoint: str, method: str = "GET", data: Optiona
 async def get_device_info_v2() -> Dict[str, Any]:
     """Get device information using API v2 format."""
     device = await get_target_device()
-    # Convert to API v2 format: device address without colons, model as SKU
+    # API v2 format: device address WITH colons, model as SKU
     return {
-        "device": device.device.replace(":", ""),
+        "device": device.device,  # Keep colons in device address
         "sku": device.model
     }
+
+
+async def get_diy_scenes() -> List[Dict[str, Any]]:
+    """
+    Get DIY scenes for the device using Govee Platform API v2.
+
+    Returns:
+        List of DIY scenes with their details
+    """
+    import uuid
+
+    device_info = await get_device_info_v2()
+
+    payload = {
+        "requestId": str(uuid.uuid4()),
+        "payload": {
+            "sku": device_info["sku"],
+            "device": device_info["device"]
+        }
+    }
+
+    response = await govee_api_v2_request(
+        "/router/api/v1/device/diy-scenes",
+        method="POST",
+        data=payload
+    )
+
+    if response.get("code") != 200:
+        raise ValueError(f"API error: {response.get('msg', 'Unknown error')}")
+
+    # Extract capabilities from response
+    capabilities = response.get("payload", {}).get("capabilities", [])
+
+    # Filter for scene-type capabilities
+    scenes = []
+    for cap in capabilities:
+        if cap.get("type") in ["devices.capabilities.dynamic_scene",
+                                "devices.capabilities.dynamic_setting",
+                                "devices.capabilities.mode"]:
+            instance = cap.get("instance", "")
+            params = cap.get("parameters", {})
+
+            # Extract enum options (scene names)
+            if "options" in params:
+                for option in params["options"]:
+                    scenes.append({
+                        "name": option.get("name", ""),
+                        "value": option.get("value"),
+                        "instance": instance,
+                        "type": cap.get("type")
+                    })
+
+    return scenes
+
+
+async def get_platform_scenes() -> List[Dict[str, Any]]:
+    """
+    Get standard platform scenes for the device using Govee Platform API v2.
+
+    Returns:
+        List of platform scenes
+    """
+    import uuid
+
+    device_info = await get_device_info_v2()
+
+    payload = {
+        "requestId": str(uuid.uuid4()),
+        "payload": {
+            "sku": device_info["sku"],
+            "device": device_info["device"]
+        }
+    }
+
+    response = await govee_api_v2_request(
+        "/router/api/v1/device/scenes",
+        method="POST",
+        data=payload
+    )
+
+    if response.get("code") != 200:
+        raise ValueError(f"API error: {response.get('msg', 'Unknown error')}")
+
+    capabilities = response.get("payload", {}).get("capabilities", [])
+
+    scenes = []
+    for cap in capabilities:
+        if cap.get("type") in ["devices.capabilities.dynamic_scene",
+                                "devices.capabilities.mode"]:
+            instance = cap.get("instance", "")
+            params = cap.get("parameters", {})
+
+            if "options" in params:
+                for option in params["options"]:
+                    scenes.append({
+                        "name": option.get("name", ""),
+                        "value": option.get("value"),
+                        "instance": instance,
+                        "type": cap.get("type")
+                    })
+
+    return scenes
+
+
+async def activate_platform_scene(scene_value: Any, instance: str = "lightScene") -> bool:
+    """
+    Activate a platform or DIY scene using Govee Platform API v2.
+
+    Args:
+        scene_value: Value of the scene to activate (can be dict with paramId/id, int, or str)
+        instance: Capability instance (default: "lightScene" or "diyScene")
+
+    Returns:
+        True if successful
+    """
+    import uuid
+
+    device_info = await get_device_info_v2()
+
+    payload = {
+        "requestId": str(uuid.uuid4()),
+        "payload": {
+            "sku": device_info["sku"],
+            "device": device_info["device"],
+            "capability": {
+                "type": "devices.capabilities.dynamic_scene",
+                "instance": instance,
+                "value": scene_value
+            }
+        }
+    }
+
+    response = await govee_api_v2_request(
+        "/router/api/v1/device/control",
+        method="POST",
+        data=payload
+    )
+
+    return response.get("code") == 200
 
 
 @mcp.tool()
@@ -410,6 +549,155 @@ async def activate_scene(scene_code: int) -> str:
 
     except Exception as e:
         return f"✗ Error activating scene: {str(e)}"
+
+
+@mcp.tool()
+async def list_diy_scenes() -> str:
+    """
+    List all DIY scenes for the Govee lamp using the official Govee Platform API.
+
+    This retrieves custom DIY scenes you've created in the Govee app.
+    Requires GOVEE_API_KEY to be set.
+    """
+    try:
+        scenes = await get_diy_scenes()
+
+        if not scenes:
+            return "No DIY scenes found for this device.\n\nCreate custom scenes in the Govee app to see them here."
+
+        scenes_list = ["DIY Scenes (Official Govee Platform API):", ""]
+
+        for idx, scene in enumerate(scenes, 1):
+            scenes_list.append(f"{idx}. {scene['name']}")
+            scenes_list.append(f"   Instance: {scene['instance']}")
+            scenes_list.append(f"   Type: {scene['type']}")
+            if scene.get('value'):
+                scenes_list.append(f"   Value: {scene['value']}")
+            scenes_list.append("")
+
+        scenes_list.append("Use activate_diy_scene(scene_name) to activate a DIY scene.")
+        scenes_list.append('Example: activate_diy_scene("My Custom Scene")')
+
+        return "\n".join(scenes_list)
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def list_platform_scenes() -> str:
+    """
+    List all platform scenes for the Govee lamp using the official Govee Platform API.
+
+    This retrieves standard scenes available for your device model.
+    Requires GOVEE_API_KEY to be set.
+    """
+    try:
+        scenes = await get_platform_scenes()
+
+        if not scenes:
+            return "No platform scenes found for this device."
+
+        scenes_list = ["Platform Scenes (Official Govee Platform API):", ""]
+
+        for idx, scene in enumerate(scenes, 1):
+            scenes_list.append(f"{idx}. {scene['name']}")
+            scenes_list.append(f"   Instance: {scene['instance']}")
+            if scene.get('value'):
+                scenes_list.append(f"   Value: {scene['value']}")
+            scenes_list.append("")
+
+        scenes_list.append("Use activate_platform_scene(scene_name) to activate a scene.")
+        scenes_list.append('Example: activate_platform_scene("Sunrise")')
+
+        return "\n".join(scenes_list)
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def activate_diy_scene(scene_name: str) -> str:
+    """
+    Activate a DIY scene on the Govee lamp using the official Govee Platform API.
+
+    Args:
+        scene_name: Name of the DIY scene to activate (from list_diy_scenes)
+
+    Example:
+        First run list_diy_scenes to see your custom scenes,
+        then activate one: activate_diy_scene("My Custom Scene")
+    """
+    try:
+        # Get all DIY scenes to find the matching one and get its instance
+        scenes = await get_diy_scenes()
+
+        # Find the scene by name
+        matching_scene = None
+        for scene in scenes:
+            if scene['name'].lower() == scene_name.lower():
+                matching_scene = scene
+                break
+
+        if not matching_scene:
+            available = [s['name'] for s in scenes]
+            return f"✗ Scene '{scene_name}' not found.\n\nAvailable DIY scenes: {', '.join(available)}"
+
+        # Activate the scene
+        instance = matching_scene.get('instance', 'lightScene')
+        value = matching_scene.get('value', scene_name)
+
+        success = await activate_platform_scene(value, instance)
+
+        if success:
+            return f"✓ DIY scene '{scene_name}' activated"
+        else:
+            return f"✗ Failed to activate DIY scene '{scene_name}'"
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
+
+
+@mcp.tool()
+async def activate_platform_scene_tool(scene_name: str) -> str:
+    """
+    Activate a platform scene on the Govee lamp using the official Govee Platform API.
+
+    Args:
+        scene_name: Name of the platform scene to activate (from list_platform_scenes)
+
+    Example:
+        First run list_platform_scenes to see available scenes,
+        then activate one: activate_platform_scene_tool("Sunrise")
+    """
+    try:
+        # Get all platform scenes to find the matching one
+        scenes = await get_platform_scenes()
+
+        # Find the scene by name
+        matching_scene = None
+        for scene in scenes:
+            if scene['name'].lower() == scene_name.lower():
+                matching_scene = scene
+                break
+
+        if not matching_scene:
+            available = [s['name'] for s in scenes]
+            return f"✗ Scene '{scene_name}' not found.\n\nAvailable platform scenes: {', '.join(available)}"
+
+        # Activate the scene
+        instance = matching_scene.get('instance', 'lightScene')
+        value = matching_scene.get('value', scene_name)
+
+        success = await activate_platform_scene(value, instance)
+
+        if success:
+            return f"✓ Platform scene '{scene_name}' activated"
+        else:
+            return f"✗ Failed to activate platform scene '{scene_name}'"
+
+    except Exception as e:
+        return f"✗ Error: {str(e)}"
 
 
 if __name__ == "__main__":
