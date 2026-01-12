@@ -2,6 +2,53 @@
 
 This document describes all three methods for controlling scenes on Govee devices, their capabilities, and current implementation status.
 
+## 🎯 Quick Start - What Actually Works
+
+**For H6078 Torch Floor Lamp (and likely other Govee devices):**
+
+### ✅ Recommended: Platform API v2 (100% Working)
+Use these MCP tools for **reliable scene control**:
+
+```python
+# List your 7 custom DIY scenes
+list_diy_scenes()
+
+# List 89 built-in platform scenes
+list_platform_scenes()
+
+# Activate DIY scene by name
+activate_diy_scene("Fire")
+
+# Activate platform scene by name
+activate_platform_scene_tool("Sunrise")
+activate_platform_scene_tool("Christmas")
+activate_platform_scene_tool("Ocean")
+```
+
+**Available Scenes:** 96 total (7 DIY + 89 platform)
+**Reliability:** ✅ Excellent - Works every time
+**Setup:** Just needs GOVEE_API_KEY in .env
+
+### ⚠️ Local UDP - Basic Controls Only
+The local UDP API works for basic controls but **scene activation is unreliable on H6078**:
+
+```python
+# ✅ These work fine
+turn_on() / turn_off()
+set_brightness(50)
+set_color(255, 0, 0)
+
+# ❌ These may not work on H6078
+list_scenes()  # Shows 15 scenes but...
+activate_scene(10)  # Often doesn't activate properly
+```
+
+### ❌ Tap-to-Run - Not Working Yet
+Undocumented API authentication is currently blocked (status 454).
+Infrastructure is ready, but activation pending auth fix.
+
+---
+
 ## Overview
 
 | API Type | Status | Requires | Scenes Available | Activation |
@@ -374,16 +421,39 @@ Response:
 
 ## Testing Results
 
-### H6078 Torch Floor Lamp
-- ✅ Local UDP: All 15 scenes work
-- ✅ Platform API: 7 DIY + 89 platform scenes
-- ⚠️ Undocumented API: Auth blocked (454)
+### H6078 Torch Floor Lamp - Real World Usage
+
+**Platform API (✅ Recommended - Highly Reliable):**
+- ✅ 7 DIY scenes - Working perfectly
+- ✅ 89 platform scenes - Working perfectly
+- ✅ Scene activation - Instant and reliable
+- ✅ Best user experience
+
+**Local UDP (⚠️ Limited Functionality):**
+- ⚠️ 15 scene codes available
+- ❌ Scene activation unreliable on H6078
+- ❌ Lamp stays in current state or doesn't respond
+- 🔍 May work better on other Govee models
+- 💡 Basic controls (on/off, brightness, color) work fine
+
+**Undocumented API (❌ Authentication Blocked):**
+- ❌ Auth endpoint returns status 454
+- ❌ Tap-to-run shortcuts not accessible
+- ⏳ Infrastructure ready, waiting for auth fix
+
+### Recommended Setup
+```
+Primary: Platform API (96 scenes, 100% reliable)
+Backup: Local UDP for basic controls (on/off, brightness, color)
+Future: Tap-to-run when auth is resolved
+```
 
 ### Example Successful Activations
 ```
-✓ Local UDP: activate_scene(10) → "Rings" scene
-✓ Platform API: activate_diy_scene("Fire") → Custom fire scene
-✓ Platform API: activate_platform_scene_tool("Sunrise") → Sunrise animation
+✅ Platform API: activate_diy_scene("Fire") → Custom fire scene
+✅ Platform API: activate_platform_scene_tool("Sunrise") → Sunrise animation
+✅ Platform API: activate_platform_scene_tool("Christmas") → Holiday scene
+⚠️ Local UDP: activate_scene(10) → May not work on H6078
 ```
 
 ## References

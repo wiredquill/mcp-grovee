@@ -4,15 +4,26 @@ A Model Context Protocol (MCP) server for controlling Govee RGBIC smart lighting
 
 ## Features
 
-- Control Govee RGBIC cylinder floor lamp (and other Govee devices)
+### Basic Controls
 - Turn lights on/off
 - Adjust brightness (0-100%)
 - Set RGB colors
 - Set color temperature
 - Use preset colors (red, green, blue, yellow, cyan, magenta, white, warm_white, orange, purple, pink)
-- **List and activate scenes** (using local API - requires server on same network as lamp)
 - Query device state
 - List all available Govee devices
+
+### Scene Control (✅ 96+ Scenes Available!)
+**Recommended: Platform API v2** - 100% Reliable
+- **DIY Scenes**: List and activate your custom scenes from the Govee app
+- **Platform Scenes**: 89 built-in scenes (Sunrise, Sunset, Christmas, Ocean, etc.)
+- **Requires**: GOVEE_API_KEY (internet connection)
+
+**Alternative: Local UDP API** - Basic controls only
+- 15 common scene codes available
+- ⚠️ Scene activation unreliable on some devices (H6078)
+- ✅ On/off, brightness, color work fine
+- **Requires**: GOVEE_DEVICE_IP (local network)
 
 ## Prerequisites
 
